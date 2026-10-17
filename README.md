@@ -66,7 +66,7 @@ Uygulama, her yayın konseptine ve ekran düzenine uyum sağlayacak 15 özel CSS
 
 ### 1. Depoyu Klonlayın veya Açın
 ```bash
-git clone https://github.com/kullanici-adiniz/kick-sub-counter-daily.git
+git clone https://github.com/Xdestrys895/kick-sub-counter-daily.git
 cd kick-sub-counter-daily
 ```
 
