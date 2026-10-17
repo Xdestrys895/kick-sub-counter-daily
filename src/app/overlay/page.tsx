@@ -25,10 +25,16 @@ function OverlayContent() {
   // Query parameter overrides
   const paramTheme = searchParams.get('theme');
   const paramGoal = searchParams.get('goal');
-  const paramTitle = searchParams.get('title');
   const paramSound = searchParams.get('sound');
   const paramChannel = searchParams.get('channel');
   const paramTimezone = searchParams.get('tz');
+
+  // Modular visibility overrides from URL
+  const paramShowTitle = searchParams.get('title');
+  const paramShowBar = searchParams.get('bar');
+  const paramShowGoalNum = searchParams.get('goalnum');
+  const paramShowPct = searchParams.get('pct');
+  const paramShowRem = searchParams.get('rem');
 
   const [config, setConfig] = useState<StreamerConfig>(DEFAULT_CONFIG);
   const [stats, setStats] = useState<DailyStats>(() => createInitialDailyStats(20, 'Europe/Istanbul'));
@@ -38,11 +44,9 @@ function OverlayContent() {
   const pusherListenerRef = useRef<KickPusherListener | null>(null);
   const lastCompletedRef = useRef(false);
 
-  // Initialize and attach transparent overlay styles
   useEffect(() => {
     document.body.classList.add('overlay-mode');
 
-    // 1. Load baseline config and stats
     const savedConfig = loadStreamerConfig();
     const effectiveGoal = paramGoal ? Math.max(1, parseInt(paramGoal, 10)) : savedConfig.dailyGoal;
     const effectiveTz = paramTimezone || savedConfig.timezone || 'Europe/Istanbul';
@@ -52,10 +56,16 @@ function OverlayContent() {
       ...savedConfig,
       dailyGoal: effectiveGoal,
       selectedThemeId: effectiveThemeId,
-      goalTitle: paramTitle || savedConfig.goalTitle || 'GÜNLÜK ABONE HEDEFİ',
       soundEnabled: paramSound !== null ? paramSound === '1' : savedConfig.soundEnabled,
       timezone: effectiveTz,
       channelSlug: paramChannel || savedConfig.channelSlug || 'oscoliat',
+
+      // Explicit URL overrides or fall back to saved config
+      showTitle: paramShowTitle !== null ? paramShowTitle === '1' : savedConfig.showTitle,
+      showProgressBar: paramShowBar !== null ? paramShowBar === '1' : savedConfig.showProgressBar,
+      showGoalNumber: paramShowGoalNum !== null ? paramShowGoalNum === '1' : savedConfig.showGoalNumber,
+      showPercentage: paramShowPct !== null ? paramShowPct === '1' : savedConfig.showPercentage,
+      showRemaining: paramShowRem !== null ? paramShowRem === '1' : savedConfig.showRemaining,
     };
 
     setConfig(mergedConfig);
@@ -65,13 +75,22 @@ function OverlayContent() {
     setStats(initialStats);
     lastCompletedRef.current = initialStats.currentCount >= initialStats.targetGoal;
 
-    // 2. Subscribe to EventBus (instant synchronization from Dashboard)
+    // Subscribe to EventBus
     const bus = EventBus.getInstance();
     const unsubscribe = bus.subscribe((msg) => {
       if (msg.type === 'STATS_UPDATE') {
         setStats(msg.payload);
       } else if (msg.type === 'CONFIG_UPDATE') {
-        setConfig((prev) => ({ ...prev, ...msg.payload }));
+        setConfig((prev) => ({
+          ...prev,
+          ...msg.payload,
+          // Respect URL overrides if explicitly provided
+          showTitle: paramShowTitle !== null ? paramShowTitle === '1' : msg.payload.showTitle,
+          showProgressBar: paramShowBar !== null ? paramShowBar === '1' : msg.payload.showProgressBar,
+          showGoalNumber: paramShowGoalNum !== null ? paramShowGoalNum === '1' : msg.payload.showGoalNumber,
+          showPercentage: paramShowPct !== null ? paramShowPct === '1' : msg.payload.showPercentage,
+          showRemaining: paramShowRem !== null ? paramShowRem === '1' : msg.payload.showRemaining,
+        }));
         if (msg.payload.selectedThemeId && !paramTheme) {
           setTheme(getThemeById(msg.payload.selectedThemeId));
         }
@@ -93,7 +112,7 @@ function OverlayContent() {
       }
     }, overlayInstanceId);
 
-    // 3. Optional Direct Kick Pusher Connection in overlay if channel provided
+    // Direct Pusher connection in standalone overlay
     if (mergedConfig.channelSlug && !pusherListenerRef.current) {
       fetch(`/api/kick/channel?slug=${encodeURIComponent(mergedConfig.channelSlug)}`)
         .then((res) => res.json())
@@ -110,7 +129,7 @@ function OverlayContent() {
         .catch(() => {});
     }
 
-    // 4. Midnight Auto-Reset Interval Check
+    // Midnight Auto-Reset Interval Check
     const midnightInterval = setInterval(() => {
       setStats((prevStats) => {
         if (isNewDay(prevStats.dateStr, mergedConfig.timezone)) {
@@ -130,7 +149,19 @@ function OverlayContent() {
         pusherListenerRef.current.disconnect();
       }
     };
-  }, [paramTheme, paramGoal, paramTitle, paramSound, paramChannel, paramTimezone, overlayInstanceId]);
+  }, [
+    paramTheme,
+    paramGoal,
+    paramSound,
+    paramChannel,
+    paramTimezone,
+    paramShowTitle,
+    paramShowBar,
+    paramShowGoalNum,
+    paramShowPct,
+    paramShowRem,
+    overlayInstanceId,
+  ]);
 
   const handleIncomingSub = (event: SubEvent, activeConfig: StreamerConfig) => {
     if (deduplicatorRef.current.isDuplicate(event.id)) {
@@ -138,7 +169,6 @@ function OverlayContent() {
     }
 
     let updatedStats: DailyStats | null = null;
-
     setStats((prev) => {
       const next = applySubEvent(prev, event);
       saveDailyStats(next);
@@ -168,7 +198,7 @@ function OverlayContent() {
   const progress: GoalProgress = calculateGoalProgress(stats.currentCount, stats.targetGoal);
 
   return (
-    <div className="w-full h-screen p-4 flex items-start justify-start bg-transparent select-none overflow-hidden">
+    <div className="w-full h-screen p-3 flex items-start justify-start bg-transparent select-none overflow-hidden">
       <ThemeRenderer
         theme={theme}
         stats={stats}

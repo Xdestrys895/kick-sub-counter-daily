@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { DailyStats, GoalProgress, StreamerConfig, WidgetTheme } from '@/domain/types';
-import { Flame, Sparkles, Trophy, Zap, Terminal, Shield, Star, Crown, Heart, Gamepad2, Layers } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 
 interface ThemeRendererProps {
   theme: WidgetTheme;
@@ -17,176 +17,161 @@ export const ThemeRenderer: React.FC<ThemeRendererProps> = ({
   stats,
   progress,
   config,
-  isOverlay = false,
 }) => {
   const isGoalReached = progress.isCompleted;
 
-  // Render thematic icon based on theme category and ID
-  const renderThemeIcon = () => {
-    switch (theme.id) {
-      case 'kick-electric':
-        return (
-          <span className="w-2.5 h-2.5 rounded-full bg-[#53FC18] animate-ping inline-block mr-1" />
-        );
-      case 'cyberpunk-neon':
-        return <Zap className="w-4 h-4 text-[#ff007f] animate-pulse" />;
-      case 'retro-arcade-8bit':
-        return <Gamepad2 className="w-4 h-4 text-[#fbbf24]" />;
-      case 'tactical-esports-hud':
-        return <Shield className="w-3.5 h-3.5 text-cyan-400" />;
-      case 'royal-gold-vip':
-        return <Crown className="w-4 h-4 text-amber-400" />;
-      case 'lofi-pastel-cozy':
-        return <Heart className="w-3.5 h-3.5 text-pink-300 fill-pink-300" />;
-      case 'inferno-lava':
-        return <Flame className="w-4 h-4 text-orange-500 animate-bounce" />;
-      case 'matrix-terminal':
-        return <Terminal className="w-3.5 h-3.5 text-green-400" />;
-      default:
-        return <Trophy className="w-4 h-4 opacity-80" />;
-    }
-  };
+  // Defaults for modularity (only minimal counter by default)
+  const showTitle = Boolean(config.showTitle);
+  const showGoalNumber = config.showGoalNumber !== false;
+  const showProgressBar = Boolean(config.showProgressBar);
+  const showPercentage = Boolean(config.showPercentage);
+  const showRemaining = Boolean(config.showRemaining);
+  const showRecentSub = Boolean(config.showRecentSub && stats.lastSubName);
 
-  // Compact Pill Theme (Special horizontal single-row layout)
+  // Compact Pill Special Theme
   if (theme.id === 'compact-streamer-pill') {
     return (
-      <div className={`relative select-none ${theme.styles.container}`}>
-        <div className="flex items-center gap-2">
-          {renderThemeIcon()}
-          <span className={theme.styles.title}>{config.goalTitle || 'GÜNLÜK HEDEF'}</span>
-        </div>
+      <div className={`relative select-none inline-flex items-center gap-3 ${theme.styles.container}`}>
+        {showTitle && (
+          <span className={theme.styles.title}>{config.goalTitle || 'HEDEF'}</span>
+        )}
 
-        <div className="flex items-center gap-1.5 font-bold">
+        <div className="flex items-baseline gap-1 font-bold">
           <span className={theme.styles.counterText}>{stats.currentCount}</span>
-          <span className={theme.styles.goalText}>/ {stats.targetGoal}</span>
+          {showGoalNumber && (
+            <span className={theme.styles.goalText}>/ {stats.targetGoal}</span>
+          )}
         </div>
 
-        <div className={theme.styles.progressTrack}>
-          <div
-            className={theme.styles.progressFill}
-            style={{ width: `${Math.min(100, progress.percentage)}%` }}
-          />
-        </div>
+        {showProgressBar && (
+          <div className={theme.styles.progressTrack}>
+            <div
+              className={theme.styles.progressFill}
+              style={{ width: `${Math.min(100, Math.max(2, progress.percentage))}%` }}
+            />
+          </div>
+        )}
 
-        <span className={theme.styles.badge}>{progress.percentage}%</span>
+        {showPercentage && (
+          <span className={theme.styles.badge}>{progress.percentage}%</span>
+        )}
       </div>
     );
   }
 
-  // Matrix Terminal Theme (ASCII bracket progress bar)
+  // Matrix Terminal Special Theme
   if (theme.id === 'matrix-terminal') {
-    const totalBlocks = 18;
+    const totalBlocks = 16;
     const filledBlocks = Math.round((progress.percentage / 100) * totalBlocks);
     const asciiBar = '█'.repeat(filledBlocks) + '░'.repeat(Math.max(0, totalBlocks - filledBlocks));
 
     return (
-      <div className={`relative select-none ${theme.styles.container} min-w-[340px] max-w-[460px]`}>
-        <div className="flex items-center justify-between mb-2 pb-1 border-b border-green-900/60">
-          <div className={theme.styles.title}>
-            {config.goalTitle || 'SYS.DAILY_SUB_GOAL'}
+      <div className={`relative select-none inline-block ${theme.styles.container}`}>
+        {/* Optional Header Row */}
+        {(showTitle || showPercentage) && (
+          <div className="flex items-center justify-between gap-4 mb-1.5 pb-1 border-b border-green-900/50">
+            {showTitle && <div className={theme.styles.title}>{config.goalTitle || 'SUB_COUNTER'}</div>}
+            {showPercentage && <span className={theme.styles.badge}>[{progress.percentage}%]</span>}
           </div>
-          <span className={theme.styles.badge}>[{progress.percentage}%]</span>
+        )}
+
+        {/* Counter Row */}
+        <div className="flex items-baseline justify-between gap-4">
+          <div className="flex items-baseline gap-1.5">
+            <span className={theme.styles.counterText}>{stats.currentCount}</span>
+            {showGoalNumber && <span className={theme.styles.goalText}>/ {stats.targetGoal}</span>}
+          </div>
+
+          {showRemaining && (
+            <span className={theme.styles.statsText}>
+              {isGoalReached ? '[TAMAM]' : `[KALAN: ${progress.remaining}]`}
+            </span>
+          )}
         </div>
 
-        <div className="flex items-baseline justify-between my-2">
-          <div className="flex items-baseline gap-2">
-            <span className={theme.styles.counterText}>{String(stats.currentCount).padStart(2, '0')}</span>
-            <span className={theme.styles.goalText}>/ {stats.targetGoal}</span>
+        {/* Optional ASCII Progress Bar */}
+        {showProgressBar && (
+          <div className="mt-2 p-1 bg-black/90 border border-green-800 text-green-400 font-mono text-[11px] tracking-wider">
+            [{asciiBar}]
           </div>
-          <div className={theme.styles.statsText}>
-            {isGoalReached ? 'STATUS: TARGET REACHED' : `REMAINING: ${progress.remaining}`}
-          </div>
-        </div>
+        )}
 
-        {/* ASCII Monospace Progress */}
-        <div className="my-2 p-1.5 bg-black/90 border border-green-800 text-green-400 font-mono text-xs tracking-wider">
-          [{asciiBar}]
-        </div>
-
-        {/* Terminal Sub-Log */}
-        {config.showRecentSub && stats.lastSubName && (
-          <div className="mt-2 text-[10px] text-green-500/70 font-mono truncate">
-            &gt; LAST_DONOR: {stats.lastSubName}
+        {/* Optional Recent Sub */}
+        {showRecentSub && stats.lastSubName && (
+          <div className="mt-1.5 text-[10px] text-green-500/70 font-mono truncate">
+            &gt; SON: {stats.lastSubName}
           </div>
         )}
       </div>
     );
   }
 
-  // Standard Rich Card Themes (13 Other Visual Themes)
+  // Standard Minimal & Clean Widget Layout
   return (
     <div
-      className={`relative select-none transition-all duration-300 min-w-[320px] max-w-[460px] ${theme.styles.container}`}
+      className={`relative select-none transition-all duration-300 inline-block ${theme.styles.container} ${
+        !showProgressBar && !showTitle && !showRecentSub ? 'p-3 sm:p-4' : ''
+      }`}
+      style={{ minWidth: showProgressBar ? '260px' : 'auto' }}
     >
-      {/* Goal Reached Sparkle Effect */}
+      {/* Goal Celebration Badge */}
       {isGoalReached && (
-        <div className="absolute -top-3 -right-2 bg-gradient-to-r from-amber-400 to-yellow-500 text-black text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-lg flex items-center gap-1 uppercase tracking-wider animate-bounce z-10">
-          <Sparkles className="w-3 h-3" /> HEDEF TAMAMLANDI!
+        <div className="absolute -top-2.5 -right-2 bg-gradient-to-r from-amber-400 to-yellow-500 text-black text-[9px] font-black px-2 py-0.5 rounded-full shadow-lg flex items-center gap-1 uppercase tracking-wider animate-bounce z-10">
+          <Sparkles className="w-2.5 h-2.5" /> TAMAMLANDI!
         </div>
       )}
 
-      {/* Header Row: Title & Percentage Badge */}
-      <div className="flex items-center justify-between mb-2">
-        <div className={theme.styles.title}>
-          {renderThemeIcon()}
-          <span>{config.goalTitle || 'GÜNLÜK ABONE HEDEFİ'}</span>
+      {/* Optional Title & Percentage Header */}
+      {(showTitle || showPercentage) && (
+        <div className="flex items-center justify-between gap-3 mb-1.5">
+          {showTitle && (
+            <div className={theme.styles.title}>
+              <span>{config.goalTitle || 'GÜNLÜK HEDEF'}</span>
+            </div>
+          )}
+
+          {showPercentage && (
+            <div className={`${theme.styles.badge} ml-auto`}>
+              %{progress.percentage}
+            </div>
+          )}
         </div>
+      )}
 
-        {config.showPercentage !== false && (
-          <div className={theme.styles.badge}>
-            %{progress.percentage}
-          </div>
-        )}
-      </div>
-
-      {/* Main Counter Display */}
-      <div className="flex items-baseline justify-between mb-3">
-        <div className="flex items-baseline gap-2">
+      {/* Main Counter Display (Big, Bold, Clean) */}
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="flex items-baseline gap-1.5">
           <span className={theme.styles.counterText}>
             {stats.currentCount}
           </span>
-          <span className={theme.styles.goalText}>
-            / {stats.targetGoal}
-          </span>
+          {showGoalNumber && (
+            <span className={theme.styles.goalText}>
+              / {stats.targetGoal}
+            </span>
+          )}
         </div>
 
-        {config.showRemaining !== false && (
+        {showRemaining && (
           <div className={theme.styles.statsText}>
-            {isGoalReached ? (
-              <span className="text-amber-400 font-bold flex items-center gap-1">
-                <Star className="w-3.5 h-3.5 fill-amber-400" /> Tamamlandı!
-              </span>
-            ) : (
-              <span>{progress.remaining} abone kaldı</span>
-            )}
+            {isGoalReached ? 'Hedef Bitti 🎉' : `${progress.remaining} kaldı`}
           </div>
         )}
       </div>
 
-      {/* Animated Progress Bar */}
-      <div className={theme.styles.progressTrack}>
-        <div
-          className={theme.styles.progressFill}
-          style={{ width: `${Math.min(100, Math.max(2, progress.percentage))}%` }}
-        />
-      </div>
+      {/* Optional Smooth Animated Progress Bar */}
+      {showProgressBar && (
+        <div className={`mt-2 ${theme.styles.progressTrack}`}>
+          <div
+            className={theme.styles.progressFill}
+            style={{ width: `${Math.min(100, Math.max(2, progress.percentage))}%` }}
+          />
+        </div>
+      )}
 
-      {/* Footer Info: Recent Sub & Gifts */}
-      {config.showRecentSub && (
-        <div className="flex items-center justify-between mt-3 pt-2 border-t border-white/5 text-[11px]">
-          <div className="truncate max-w-[200px] text-zinc-400">
-            {stats.lastSubName ? (
-              <span>
-                Son Abone: <strong className="text-white font-semibold">{stats.lastSubName}</strong>
-              </span>
-            ) : (
-              <span className="italic opacity-60">İlk abone bekleniyor...</span>
-            )}
-          </div>
-
-          <div className="text-zinc-500 font-mono text-[10px]">
-            {stats.giftCount > 0 && <span>🎁 {stats.giftCount} Hediye</span>}
-          </div>
+      {/* Optional Recent Sub Footer */}
+      {showRecentSub && stats.lastSubName && (
+        <div className="mt-2 pt-1.5 border-t border-white/10 text-[10px] text-zinc-400 truncate">
+          Son Abone: <strong className="text-white font-semibold">{stats.lastSubName}</strong>
         </div>
       )}
     </div>

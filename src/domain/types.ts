@@ -80,9 +80,15 @@ export interface StreamerConfig {
   soundEnabled: boolean;
   soundVolume: number; // 0.0 to 1.0
   autoResetAtMidnight: boolean;
-  showRecentSub: boolean;
+
+  // Modular Elements (Off by default for ultra-clean counter!)
+  showTitle: boolean;
+  showGoalNumber: boolean;
+  showProgressBar: boolean;
   showPercentage: boolean;
   showRemaining: boolean;
+  showRecentSub: boolean;
+  fontSize: 'sm' | 'md' | 'lg' | 'xl';
 }
 
 export interface OverlayQueryParams {
@@ -92,5 +98,9 @@ export interface OverlayQueryParams {
   sound?: boolean;
   channel?: string;
   tz?: string;
-  showStats?: boolean;
+  showTitle?: boolean;
+  showBar?: boolean;
+  showGoalNum?: boolean;
+  showPct?: boolean;
+  showRem?: boolean;
 }

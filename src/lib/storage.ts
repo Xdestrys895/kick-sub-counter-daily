@@ -1,22 +1,28 @@
 import { DailyStats, StreamerConfig } from '@/domain/types';
 import { createInitialDailyStats, getTodayDateString, isNewDay } from '@/domain/counter-service';
 
-const CONFIG_KEY = 'kick_sub_counter_config_v1';
-const STATS_KEY = 'kick_sub_counter_stats_v1';
+const CONFIG_KEY = 'kick_sub_counter_config_v2';
+const STATS_KEY = 'kick_sub_counter_stats_v2';
 
 export const DEFAULT_CONFIG: StreamerConfig = {
-  channelSlug: '',
+  channelSlug: 'oscoliat',
   kickUser: null,
   dailyGoal: 20,
-  goalTitle: 'GÜNLÜK ABONE HEDEFİ',
+  goalTitle: 'GÜNLÜK HEDEF',
   selectedThemeId: 'kick-electric',
   timezone: 'Europe/Istanbul',
   soundEnabled: true,
-  soundVolume: 0.6,
+  soundVolume: 0.5,
   autoResetAtMidnight: true,
-  showRecentSub: true,
-  showPercentage: true,
-  showRemaining: true,
+
+  // Sadece temiz sayaç açık, ekstra süsler kapalı (ayarlarla açılabilir)
+  showTitle: false,
+  showGoalNumber: true,
+  showProgressBar: true,
+  showPercentage: false,
+  showRemaining: false,
+  showRecentSub: false,
+  fontSize: 'lg',
 };
 
 export function loadStreamerConfig(): StreamerConfig {
