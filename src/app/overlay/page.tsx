@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef, Suspense } from 'react';
+import React, { useEffect, useState, useRef, Suspense, useId } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { DailyStats, GoalProgress, StreamerConfig, SubEvent, WidgetTheme } from '@/domain/types';
 import { getThemeById } from '@/domain/themes';
@@ -9,7 +9,6 @@ import {
   calculateGoalProgress,
   createInitialDailyStats,
   EventDeduplicator,
-  getTodayDateString,
   isNewDay,
   playWebAudioTone,
 } from '@/domain/counter-service';
@@ -21,6 +20,7 @@ import { KickPusherListener } from '@/lib/kick-pusher';
 
 function OverlayContent() {
   const searchParams = useSearchParams();
+  const overlayInstanceId = useId();
 
   // Query parameter overrides
   const paramTheme = searchParams.get('theme');
@@ -55,7 +55,7 @@ function OverlayContent() {
       goalTitle: paramTitle || savedConfig.goalTitle || 'GÜNLÜK ABONE HEDEFİ',
       soundEnabled: paramSound !== null ? paramSound === '1' : savedConfig.soundEnabled,
       timezone: effectiveTz,
-      channelSlug: paramChannel || savedConfig.channelSlug || '',
+      channelSlug: paramChannel || savedConfig.channelSlug || 'oscoliat',
     };
 
     setConfig(mergedConfig);
@@ -91,7 +91,7 @@ function OverlayContent() {
         setStats(fresh);
         lastCompletedRef.current = false;
       }
-    });
+    }, overlayInstanceId);
 
     // 3. Optional Direct Kick Pusher Connection in overlay if channel provided
     if (mergedConfig.channelSlug && !pusherListenerRef.current) {
@@ -130,20 +130,26 @@ function OverlayContent() {
         pusherListenerRef.current.disconnect();
       }
     };
-  }, [paramTheme, paramGoal, paramTitle, paramSound, paramChannel, paramTimezone]);
+  }, [paramTheme, paramGoal, paramTitle, paramSound, paramChannel, paramTimezone, overlayInstanceId]);
 
   const handleIncomingSub = (event: SubEvent, activeConfig: StreamerConfig) => {
     if (deduplicatorRef.current.isDuplicate(event.id)) {
       return;
     }
 
-    setStats((prev) => {
-      const updated = applySubEvent(prev, event);
-      saveDailyStats(updated);
+    let updatedStats: DailyStats | null = null;
 
-      // Check if newly reached goal
+    setStats((prev) => {
+      const next = applySubEvent(prev, event);
+      saveDailyStats(next);
+      updatedStats = next;
+      return next;
+    });
+
+    if (updatedStats) {
+      const currentStats = updatedStats as DailyStats;
       const wasCompleted = lastCompletedRef.current;
-      const isNowCompleted = updated.currentCount >= updated.targetGoal;
+      const isNowCompleted = currentStats.currentCount >= currentStats.targetGoal;
 
       if (!wasCompleted && isNowCompleted) {
         fireGoalCelebration();
@@ -152,14 +158,11 @@ function OverlayContent() {
         fireSubSparkle();
       }
 
-      // Audio feedback
       if (activeConfig.soundEnabled) {
         const activeTheme = getThemeById(activeConfig.selectedThemeId);
         playWebAudioTone(activeTheme.soundPreset, activeConfig.soundVolume);
       }
-
-      return updated;
-    });
+    }
   };
 
   const progress: GoalProgress = calculateGoalProgress(stats.currentCount, stats.targetGoal);

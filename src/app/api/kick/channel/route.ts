@@ -1,19 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { KickApiClient } from '@/lib/kick-api';
+import { KickApiClient, extractKickSlug } from '@/lib/kick-api';
 
 export async function GET(req: NextRequest) {
-  const slug = req.nextUrl.searchParams.get('slug');
+  const rawInput = req.nextUrl.searchParams.get('slug');
 
-  if (!slug) {
+  if (!rawInput) {
     return NextResponse.json({ error: 'Channel slug parameter is required' }, { status: 400 });
   }
 
+  const cleanSlug = extractKickSlug(rawInput);
+  if (!cleanSlug) {
+    return NextResponse.json({ error: 'Geçersiz Kick kullanıcı adı veya bağlantısı.' }, { status: 400 });
+  }
+
   try {
-    const channel = await KickApiClient.fetchPublicChannel(slug);
+    const channel = await KickApiClient.fetchPublicChannel(cleanSlug);
 
     if (!channel) {
       return NextResponse.json(
-        { error: 'Kanal bulunamadı veya Kick API yanıt vermedi. Lütfen kullanıcı adını kontrol edin.' },
+        { error: `"${cleanSlug}" adlı Kick kanalı bulunamadı. Lütfen kullanıcı adını kontrol edin.` },
         { status: 404 }
       );
     }

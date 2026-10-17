@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef, Suspense } from 'react';
+import React, { useEffect, useState, useRef, Suspense, useId } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { DailyStats, GoalProgress, KickUser, StreamerConfig, SubEvent, WidgetTheme } from '@/domain/types';
 import { getThemeById } from '@/domain/themes';
@@ -29,16 +29,19 @@ import { StreamerSettings } from '@/components/StreamerSettings';
 import { SimulatorControls } from '@/components/SimulatorControls';
 import { ObsUrlGenerator } from '@/components/ObsUrlGenerator';
 import { fireGoalCelebration, fireSubSparkle } from '@/components/ConfettiTrigger';
-import { Activity, Radio, ExternalLink, Sparkles, TrendingUp, Users, Award, Shield } from 'lucide-react';
+import { KickChannelDetails } from '@/lib/kick-api';
+import { Activity, ExternalLink, Sparkles, TrendingUp, Users, Award, CheckCircle } from 'lucide-react';
 
 function DashboardContent() {
   const searchParams = useSearchParams();
+  const componentInstanceId = useId();
 
   // State
   const [config, setConfig] = useState<StreamerConfig>(DEFAULT_CONFIG);
   const [stats, setStats] = useState<DailyStats>(() => createInitialDailyStats(20, 'Europe/Istanbul'));
   const [theme, setTheme] = useState<WidgetTheme>(() => getThemeById('kick-electric'));
   const [connectionState, setConnectionState] = useState<PusherConnectionState>('disconnected');
+  const [channelDetails, setChannelDetails] = useState<KickChannelDetails | null>(null);
   const [recentEvents, setRecentEvents] = useState<SubEvent[]>([]);
 
   const deduplicatorRef = useRef(new EventDeduplicator(1000));
@@ -48,6 +51,11 @@ function DashboardContent() {
   // Initialize
   useEffect(() => {
     const savedConfig = loadStreamerConfig();
+
+    // Default to 'oscoliat' if no channel entered yet
+    if (!savedConfig.channelSlug) {
+      savedConfig.channelSlug = 'oscoliat';
+    }
 
     // Check if redirected from Kick OAuth login
     const kickLogin = searchParams.get('kick_login');
@@ -74,26 +82,24 @@ function DashboardContent() {
     setStats(initialStats);
     lastCompletedRef.current = initialStats.currentCount >= initialStats.targetGoal;
 
-    // Connect Pusher if channel is available
-    if (savedConfig.kickUser?.channelId || savedConfig.channelSlug) {
-      connectToChannelPusher(savedConfig.kickUser?.channelId, savedConfig.channelSlug);
-    }
+    // Connect to Kick channel
+    connectToKickChannel(savedConfig.channelSlug);
 
-    // Subscribe to EventBus
+    // Subscribe to EventBus with our componentInstanceId to avoid self-echoes
     const bus = EventBus.getInstance();
     const unsub = bus.subscribe((msg) => {
       if (msg.type === 'STATS_UPDATE') {
         setStats(msg.payload);
       }
-    });
+    }, componentInstanceId);
 
-    // Midnight Auto-Reset Interval Check (every 30s)
+    // Midnight Auto-Reset Interval Check
     const midnightInterval = setInterval(() => {
       setStats((prev) => {
         if (isNewDay(prev.dateStr, savedConfig.timezone)) {
           const fresh = createInitialDailyStats(savedConfig.dailyGoal, savedConfig.timezone);
           saveDailyStats(fresh);
-          bus.publish({ type: 'STATS_UPDATE', payload: fresh });
+          bus.publish({ type: 'STATS_UPDATE', payload: fresh }, componentInstanceId);
           lastCompletedRef.current = false;
           return fresh;
         }
@@ -108,75 +114,78 @@ function DashboardContent() {
         pusherListenerRef.current.disconnect();
       }
     };
-  }, [searchParams]);
+  }, [searchParams, componentInstanceId]);
 
-  const connectToChannelPusher = async (explicitChannelId?: number | string, slug?: string) => {
-    let channelId = explicitChannelId;
-    let chatroomId: number | string | undefined = undefined;
+  const connectToKickChannel = async (channelInput: string) => {
+    if (!channelInput) return false;
 
-    if (!channelId && slug) {
-      setConnectionState('connecting');
-      try {
-        const res = await fetch(`/api/kick/channel?slug=${encodeURIComponent(slug)}`);
-        if (res.ok) {
-          const data = await res.json();
-          channelId = data.channel.channelId;
-          chatroomId = data.channel.chatroomId;
+    setConnectionState('connecting');
 
-          // Update user in config
-          setConfig((prev) => {
-            const updated = {
-              ...prev,
-              channelSlug: slug,
-              kickUser: data.channel,
-            };
-            saveStreamerConfig(updated);
-            return updated;
-          });
-        }
-      } catch (err) {
-        console.error('Error fetching channel details:', err);
+    try {
+      const res = await fetch(`/api/kick/channel?slug=${encodeURIComponent(channelInput)}`);
+      if (!res.ok) {
         setConnectionState('error');
         return false;
       }
-    }
 
-    if (!channelId) {
+      const data = await res.json();
+      const channel: KickChannelDetails = data.channel;
+
+      setChannelDetails(channel);
+
+      // Update config
+      const updatedConfig = {
+        ...config,
+        channelSlug: channel.slug,
+        kickUser: channel,
+      };
+      setConfig(updatedConfig);
+      saveStreamerConfig(updatedConfig);
+
+      // Start Pusher connection
+      if (pusherListenerRef.current) {
+        pusherListenerRef.current.disconnect();
+      }
+
+      pusherListenerRef.current = new KickPusherListener({
+        channelId: channel.channelId || channel.id,
+        chatroomId: channel.chatroomId,
+        onSubEvent: (evt) => handleIncomingSubEvent(evt),
+        onStateChange: (st) => setConnectionState(st),
+      });
+
+      pusherListenerRef.current.connect();
+      setConnectionState('connected');
+      return true;
+    } catch (err) {
+      console.error('Kick connection error:', err);
       setConnectionState('error');
       return false;
     }
-
-    if (pusherListenerRef.current) {
-      pusherListenerRef.current.disconnect();
-    }
-
-    pusherListenerRef.current = new KickPusherListener({
-      channelId: channelId,
-      chatroomId: chatroomId,
-      onSubEvent: handleNewSubEvent,
-      onStateChange: (st) => setConnectionState(st),
-    });
-
-    pusherListenerRef.current.connect();
-    return true;
   };
 
-  const handleNewSubEvent = (event: SubEvent) => {
+  const handleIncomingSubEvent = (event: SubEvent) => {
     if (deduplicatorRef.current.isDuplicate(event.id)) {
       return;
     }
 
+    let updatedStats: DailyStats | null = null;
+
     setStats((prev) => {
-      const updated = applySubEvent(prev, event);
-      saveDailyStats(updated);
+      const nextStats = applySubEvent(prev, event);
+      saveDailyStats(nextStats);
+      updatedStats = nextStats;
+      return nextStats;
+    });
 
-      // Event bus broadcast
-      EventBus.getInstance().publish({ type: 'SUB_EVENT', payload: event });
-      EventBus.getInstance().publish({ type: 'STATS_UPDATE', payload: updated });
+    // Execute side effects safely outside state update
+    if (updatedStats) {
+      const currentStats = updatedStats as DailyStats;
+      EventBus.getInstance().publish({ type: 'SUB_EVENT', payload: event }, componentInstanceId);
+      EventBus.getInstance().publish({ type: 'STATS_UPDATE', payload: currentStats }, componentInstanceId);
 
-      // Goal check
       const wasCompleted = lastCompletedRef.current;
-      const isNowCompleted = updated.currentCount >= updated.targetGoal;
+      const isNowCompleted = currentStats.currentCount >= currentStats.targetGoal;
 
       if (!wasCompleted && isNowCompleted) {
         fireGoalCelebration();
@@ -185,40 +194,12 @@ function DashboardContent() {
         fireSubSparkle();
       }
 
-      // Audio feedback
       if (config.soundEnabled) {
         playWebAudioTone(theme.soundPreset, config.soundVolume);
       }
-
-      return updated;
-    });
+    }
 
     setRecentEvents((prev) => [event, ...prev.slice(0, 19)]);
-  };
-
-  const handleConfigChange = (newConfigPartial: Partial<StreamerConfig>) => {
-    setConfig((prev) => {
-      const updated = { ...prev, ...newConfigPartial };
-      saveStreamerConfig(updated);
-
-      // If goal changed, update stats goal
-      if (newConfigPartial.dailyGoal && newConfigPartial.dailyGoal !== stats.targetGoal) {
-        setStats((prevStats) => {
-          const updatedStats = { ...prevStats, targetGoal: newConfigPartial.dailyGoal! };
-          saveDailyStats(updatedStats);
-          EventBus.getInstance().publish({ type: 'STATS_UPDATE', payload: updatedStats });
-          return updatedStats;
-        });
-      }
-
-      EventBus.getInstance().publish({ type: 'CONFIG_UPDATE', payload: updated });
-      return updated;
-    });
-  };
-
-  const handleSelectTheme = (newTheme: WidgetTheme) => {
-    setTheme(newTheme);
-    handleConfigChange({ selectedThemeId: newTheme.id });
   };
 
   const handleSimulateSub = (count: number, isGift?: boolean, name?: string) => {
@@ -229,24 +210,53 @@ function DashboardContent() {
       username: name || (isGift ? 'Cömert Destekçi' : 'Yeni Abone'),
       giftCount: isGift ? count : 0,
     };
-    handleNewSubEvent(dummyEvent);
+    handleIncomingSubEvent(dummyEvent);
   };
 
   const handleDecrement = () => {
+    let updatedStats: DailyStats | null = null;
     setStats((prev) => {
       if (prev.currentCount <= 0) return prev;
-      const updated = { ...prev, currentCount: prev.currentCount - 1 };
-      saveDailyStats(updated);
-      EventBus.getInstance().publish({ type: 'STATS_UPDATE', payload: updated });
-      return updated;
+      const next = { ...prev, currentCount: prev.currentCount - 1 };
+      saveDailyStats(next);
+      updatedStats = next;
+      return next;
     });
+
+    if (updatedStats) {
+      EventBus.getInstance().publish({ type: 'STATS_UPDATE', payload: updatedStats }, componentInstanceId);
+    }
   };
 
   const handleReset = () => {
     const fresh = resetDailyStats(config.dailyGoal, config.timezone);
     setStats(fresh);
     lastCompletedRef.current = false;
-    EventBus.getInstance().publish({ type: 'RESET_COUNTER', payload: { goal: config.dailyGoal, timezone: config.timezone } });
+    EventBus.getInstance().publish(
+      { type: 'RESET_COUNTER', payload: { goal: config.dailyGoal, timezone: config.timezone } },
+      componentInstanceId
+    );
+    EventBus.getInstance().publish({ type: 'STATS_UPDATE', payload: fresh }, componentInstanceId);
+  };
+
+  const handleConfigChange = (newConfigPartial: Partial<StreamerConfig>) => {
+    const updated = { ...config, ...newConfigPartial };
+    setConfig(updated);
+    saveStreamerConfig(updated);
+
+    if (newConfigPartial.dailyGoal && newConfigPartial.dailyGoal !== stats.targetGoal) {
+      const updatedStats = { ...stats, targetGoal: newConfigPartial.dailyGoal };
+      setStats(updatedStats);
+      saveDailyStats(updatedStats);
+      EventBus.getInstance().publish({ type: 'STATS_UPDATE', payload: updatedStats }, componentInstanceId);
+    }
+
+    EventBus.getInstance().publish({ type: 'CONFIG_UPDATE', payload: updated }, componentInstanceId);
+  };
+
+  const handleSelectTheme = (newTheme: WidgetTheme) => {
+    setTheme(newTheme);
+    handleConfigChange({ selectedThemeId: newTheme.id });
   };
 
   const handleDisconnect = () => {
@@ -256,6 +266,7 @@ function DashboardContent() {
     }
     const updated = { ...config, kickUser: null, channelSlug: '' };
     setConfig(updated);
+    setChannelDetails(null);
     saveStreamerConfig(updated);
     setConnectionState('disconnected');
   };
@@ -275,7 +286,7 @@ function DashboardContent() {
               <h1 className="text-2xl sm:text-3xl font-black tracking-tight flex items-center gap-2">
                 Kick Günlük Abone Sayacı
                 <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-kick-green text-black uppercase">
-                  v1.0 Pro
+                  v1.0 Canlı
                 </span>
               </h1>
               <p className="text-xs sm:text-sm text-zinc-400">
@@ -379,9 +390,9 @@ function DashboardContent() {
 
         {/* Kick Account Connection Card */}
         <KickLoginCard
-          user={config.kickUser}
+          user={channelDetails}
           connectionState={connectionState}
-          onConnectChannel={(slug) => connectToChannelPusher(undefined, slug)}
+          onConnectChannel={connectToKickChannel}
           onDisconnect={handleDisconnect}
         />
 
