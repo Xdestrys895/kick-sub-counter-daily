@@ -30,7 +30,7 @@ import { SimulatorControls } from '@/components/SimulatorControls';
 import { ObsUrlGenerator } from '@/components/ObsUrlGenerator';
 import { fireGoalCelebration, fireSubSparkle } from '@/components/ConfettiTrigger';
 import { KickChannelDetails } from '@/lib/kick-api';
-import { ExternalLink, Palette, Sparkles, Sliders } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 
 function DashboardContent() {
   const searchParams = useSearchParams();
@@ -247,85 +247,95 @@ function DashboardContent() {
 
   const progress: GoalProgress = calculateGoalProgress(stats.currentCount, stats.targetGoal);
 
+  const statusLabel: Record<PusherConnectionState, string> = {
+    connected: 'Canlı',
+    connecting: 'Bağlanıyor',
+    disconnected: 'Bağlı değil',
+    error: 'Hata',
+  };
+  const statusDot: Record<PusherConnectionState, string> = {
+    connected: 'bg-accent',
+    connecting: 'bg-amber-400 animate-pulse',
+    disconnected: 'bg-zinc-500',
+    error: 'bg-red-500',
+  };
+
   return (
-    <main className="min-h-screen bg-kick-darker text-white p-4 sm:p-6 md:p-8">
-      <div className="max-w-5xl mx-auto space-y-6">
-        {/* Minimal Clean Header */}
-        <header className="flex items-center justify-between pb-4 border-b border-kick-border">
+    <main className="min-h-screen">
+      <header className="sticky top-0 z-20 border-b border-line bg-base/80 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-black border border-kick-green flex items-center justify-center font-black text-kick-green text-lg shadow-[0_0_10px_rgba(83,252,24,0.3)]">
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent text-sm font-black text-black">
               K
             </div>
-            <div>
-              <h1 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
-                Kick Günlük Abone Sayacı
-                <span className="w-2 h-2 rounded-full bg-kick-green animate-pulse" />
-              </h1>
+            <span className="text-sm font-semibold">Abone Sayacı</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="hidden items-center gap-2 rounded-full border border-line px-2.5 py-1 text-xs text-muted sm:inline-flex">
+              <span className={`h-1.5 w-1.5 rounded-full ${statusDot[connectionState]}`} />
+              {statusLabel[connectionState]}
+            </span>
+            <a
+              href="/overlay"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-raised px-3 text-xs font-medium hover:border-line-strong"
+            >
+              <ExternalLink className="h-3.5 w-3.5" /> Overlay
+            </a>
+          </div>
+        </div>
+      </header>
+
+      <div className="mx-auto grid max-w-6xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_400px]">
+        {/* Stage */}
+        <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+          <section className="overflow-hidden rounded-2xl border border-line">
+            <div className="stage-grid flex min-h-[260px] items-center justify-center p-8">
+              <ThemeRenderer theme={theme} stats={stats} progress={progress} config={config} />
             </div>
-          </div>
+            <div className="flex items-center justify-between border-t border-line bg-surface px-4 py-2.5 text-xs text-muted">
+              <span>Önizleme · {theme.nameTr}</span>
+              <span className="font-mono">{stats.dateStr}</span>
+            </div>
+          </section>
 
-          <a
-            href="/overlay"
-            target="_blank"
-            rel="noreferrer"
-            className="px-3.5 py-1.5 bg-kick-green hover:bg-[#46d614] text-black font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-[0_0_12px_rgba(83,252,24,0.3)] transition-all"
-          >
-            <ExternalLink className="w-3.5 h-3.5" /> OBS Canlı Penceresi
-          </a>
-        </header>
+          <section className="grid grid-cols-3 divide-x divide-line rounded-2xl border border-line bg-surface">
+            {[
+              { label: 'Bugün', value: stats.currentCount },
+              { label: 'Kalan', value: progress.remaining },
+              { label: 'İlerleme', value: `%${Math.round(progress.percentage)}` },
+            ].map((s) => (
+              <div key={s.label} className="px-4 py-3.5">
+                <p className="text-xs text-muted">{s.label}</p>
+                <p className="mt-1 font-mono text-xl font-semibold tabular-nums">{s.value}</p>
+              </div>
+            ))}
+          </section>
 
-        {/* Kick Connection Bar */}
-        <KickLoginCard
-          user={channelDetails}
-          connectionState={connectionState}
-          onConnectChannel={connectToKickChannel}
-          onDisconnect={handleDisconnect}
-        />
-
-        {/* Live Widget Showcase (Focused & Clean) */}
-        <div className="bg-kick-card border border-kick-border rounded-3xl p-6 sm:p-8 relative overflow-hidden shadow-2xl flex flex-col items-center justify-center min-h-[170px]">
-          <div className="absolute top-3 left-4 text-[10px] font-mono uppercase tracking-wider text-zinc-500">
-            Canlı Önizleme ({theme.nameTr})
-          </div>
-
-          <div className="py-2">
-            <ThemeRenderer
-              theme={theme}
+          <section className="rounded-2xl border border-line bg-surface p-4">
+            <p className="mb-3 text-xs text-muted">Test</p>
+            <SimulatorControls
               stats={stats}
-              progress={progress}
-              config={config}
+              onAddSub={handleSimulateSub}
+              onDecrement={handleDecrement}
+              onReset={handleReset}
             />
-          </div>
+          </section>
         </div>
 
-        {/* Simulator Toolbar & OBS URL Generator */}
+        {/* Settings */}
         <div className="space-y-4">
-          <SimulatorControls
-            stats={stats}
-            onAddSub={handleSimulateSub}
-            onDecrement={handleDecrement}
-            onReset={handleReset}
+          <KickLoginCard
+            user={channelDetails}
+            connectionState={connectionState}
+            onConnectChannel={connectToKickChannel}
+            onDisconnect={handleDisconnect}
           />
-
           <ObsUrlGenerator config={config} />
+          <StreamerSettings config={config} onChangeConfig={handleConfigChange} />
+          <ThemeSelector selectedThemeId={config.selectedThemeId} onSelectTheme={handleSelectTheme} />
         </div>
-
-        {/* Modular Appearance Settings (Sadece Sayaç veya Detaylar) */}
-        <StreamerSettings
-          config={config}
-          onChangeConfig={handleConfigChange}
-        />
-
-        {/* Theme Selector (15 Seçenek) */}
-        <ThemeSelector
-          selectedThemeId={config.selectedThemeId}
-          onSelectTheme={handleSelectTheme}
-        />
-
-        {/* Clean Footer */}
-        <footer className="pt-6 pb-8 text-center text-xs text-zinc-600 border-t border-kick-border">
-          <p>Kick Daily Sub Counter • Minimalist Streamer Suite</p>
-        </footer>
       </div>
     </main>
   );
@@ -333,7 +343,7 @@ function DashboardContent() {
 
 export default function DashboardPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-kick-darker text-white p-8">Yükleniyor...</div>}>
+    <Suspense fallback={<div className="min-h-screen" />}>
       <DashboardContent />
     </Suspense>
   );

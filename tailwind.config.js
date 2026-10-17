@@ -9,6 +9,16 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // Dashboard design tokens
+        base: "#09090b",
+        surface: "#111113",
+        raised: "#18181b",
+        line: "#232327",
+        "line-strong": "#34343a",
+        fg: "#fafafa",
+        muted: "#8b8b93",
+        accent: { DEFAULT: "#53FC18", hover: "#6bff36" },
+        // Legacy palette, still used by overlay themes
         kick: {
           green: "#53FC18",
           dark: "#0b0e0f",
@@ -19,7 +29,8 @@ module.exports = {
         }
       },
       fontFamily: {
-        mono: ["Consolas", "Monaco", "'Courier New'", "monospace"],
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "Consolas", "monospace"],
       },
       animation: {
         'pulse-glow': 'pulseGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
